@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// INVENTORY CONTEXT
+// ---------------------------------------------------------------------------
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  priceAmount Int // stored in cents, e.g. 9999 = $99.99
+  currency    String   @default("CAD")
+  stock       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reservations Reservation[]
+
+  @@map("products")
+}
+
+model Reservation {
+  id        String            @id @default(uuid())
+  productId String
+  userId    String
+  status    ReservationStatus @default(PENDING)
+  expiresAt DateTime
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+  order   Order?
+
+  @@map("reservations")
+}
+
+// ---------------------------------------------------------------------------
+// ORDERS CONTEXT
+// ---------------------------------------------------------------------------
+
+model Order {
+  id             String      @id @default(uuid())
+  reservationId  String      @unique
+  userId         String
+  status         OrderStatus @default(PENDING)
+  totalAmount    Int // in cents
+  currency       String      @default("CAD")
+  idempotencyKey String      @unique
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+  payment     Payment?
+
+  @@map("orders")
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  orderId   String        @unique
+  status    PaymentStatus @default(PENDING)
+  amount    Int // in cents
+  currency  String        @default("CAD")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  RELEASED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
