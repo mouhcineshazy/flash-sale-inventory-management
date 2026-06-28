@@ -6,7 +6,7 @@ describe("Reservation Entity test",() => {
         let reservation: Reservation;
         beforeEach(() => {
             //Arrange
-            reservation = Reservation.create(ProductId.generate(), 'user-1');
+            reservation = Reservation.create(ProductId.generate(), 'user-1', 1);
 
 
         });
@@ -28,6 +28,7 @@ describe("Reservation Entity test",() => {
                 productId: 'some-product-id',
                 userId: 'user-1',
                 status: ReservationStatus.PENDING,
+                quantity: 1,
                 expiresAt: new Date(Date.now() - 1000), // 1 second in the past
                 createdAt: new Date(),
                 updatedAt: new Date(),
@@ -38,7 +39,7 @@ describe("Reservation Entity test",() => {
     describe('release()', () =>{
         let reservation: Reservation;
         beforeEach(()=>{
-            reservation = Reservation.create(ProductId.generate(), 'user-1');
+            reservation = Reservation.create(ProductId.generate(), 'user-1', 1);
         })
         it('should release a reservation successfully',()=>{
             //Act
@@ -62,6 +63,7 @@ describe("Reservation Entity test",() => {
                 productId: 'some-product-id',
                 userId: 'user-1',
                 status: ReservationStatus.PENDING,
+                quantity: 1,
                 expiresAt: new Date(Date.now() - 1000), // 1 second in the past
                 createdAt: new Date(),
                 updatedAt: new Date(),
@@ -69,7 +71,7 @@ describe("Reservation Entity test",() => {
             expect(expiredReservation.isExpired()).toBe(true);
         });
         it('should return false if reservation is not expired',()=>{
-            const reservation = Reservation.create(ProductId.generate(), 'user-1');
+            const reservation = Reservation.create(ProductId.generate(), 'user-1', 1);
             expect(reservation.isExpired()).toBe(false);
         })
 

@@ -22,7 +22,6 @@ GitHub portfolio project demonstrating: DDD, high-concurrency patterns, and AI i
 
 - Explain WHY before HOW. Always state which DDD layer new code belongs to and why.
 - After each concept, ask one interview-style checkpoint question before moving forward.
-- When the user shows you code, review it critically. If it violates DDD, flag it immediately and explain why.
 - Draw analogies to Java/Spring when introducing Node.js/NestJS concepts.
   - NestJS `@Module` ≈ Spring `@Configuration`
   - NestJS `@Injectable` ≈ Spring `@Service` / `@Component`
@@ -30,7 +29,20 @@ GitHub portfolio project demonstrating: DDD, high-concurrency patterns, and AI i
   - NestJS use case ≈ Spring application service
 - Surface production concerns (error handling, fallbacks, observability) alongside the happy path — not as afterthoughts.
 - Be honest about tradeoffs. Don't just validate the user's choices; give your engineering opinion.
-- Never let the user copy-paste without understanding. After giving code, ask: "What does this line do? What would happen if we removed it?"
+
+### Code Review Scope — What to Focus On
+
+The user has 9+ years of experience. **Do not review boilerplate** — getters, access modifiers, enum declarations, typos, formatting. Generate boilerplate when asked, or just add it silently.
+
+**Review only architectural and DDD concerns:**
+- Bounded context violations (wrong data on the wrong aggregate)
+- DDD layer violations (business logic in controller, external calls in domain)
+- Wrong layer for transaction boundaries
+- Cross-context communication design (use case vs event vs direct repo)
+- Missing domain invariants that the domain model should enforce
+- Design decisions with non-obvious tradeoffs
+
+If you find both architectural issues and boilerplate issues, fix the boilerplate silently and only surface the architectural ones.
 
 ---
 

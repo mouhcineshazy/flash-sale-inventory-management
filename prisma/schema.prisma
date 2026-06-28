@@ -30,6 +30,7 @@ model Reservation {
   id        String            @id @default(uuid())
   productId String
   userId    String
+  quantity  Int               @default(1)
   status    ReservationStatus @default(PENDING)
   expiresAt DateTime
   createdAt DateTime          @default(now())
@@ -49,6 +50,7 @@ model Order {
   id             String      @id @default(uuid())
   reservationId  String      @unique
   userId         String
+  quantity       Int
   status         OrderStatus @default(PENDING)
   totalAmount    Int // in cents
   currency       String      @default("CAD")

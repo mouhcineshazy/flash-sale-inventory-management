@@ -51,6 +51,7 @@ export class InventoryController {
     const result = await this.reserveStockUseCase.execute({
       productId,
       userId: dto.userId,
+      quantity: dto.quantity,
     });
 
     return {

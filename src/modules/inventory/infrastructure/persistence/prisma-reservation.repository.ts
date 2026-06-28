@@ -39,6 +39,7 @@ export class PrismaReservationRepository implements IReservationRepository {
         id: reservation.id,
         productId: reservation.productId.value,
         userId: reservation.userId,
+        quantity: reservation.quantity,
         status: reservation.status,
         expiresAt: reservation.expiresAt,
         createdAt: reservation.createdAt,
@@ -65,6 +66,7 @@ export class PrismaReservationRepository implements IReservationRepository {
     id: string;
     productId: string;
     userId: string;
+    quantity: number;
     status: string;
     expiresAt: Date;
     createdAt: Date;
@@ -74,6 +76,7 @@ export class PrismaReservationRepository implements IReservationRepository {
       id: record.id,
       productId: record.productId,
       userId: record.userId,
+      quantity: record.quantity,
       status: record.status as ReservationStatus,
       expiresAt: record.expiresAt,
       createdAt: record.createdAt,

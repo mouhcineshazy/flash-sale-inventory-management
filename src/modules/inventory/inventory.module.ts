@@ -41,10 +41,10 @@ import { InventoryController } from './http/inventory.controller';
     ConfirmReservationUseCase,
   ],
   exports: [
-    // Exported so the Orders module can call ConfirmReservationUseCase
-    // after a successful payment without crossing domain boundaries
+    ReserveStockUseCase,
     ConfirmReservationUseCase,
     ReleaseReservationUseCase,
+    PRODUCT_REPOSITORY,
   ],
 })
 export class InventoryModule {}

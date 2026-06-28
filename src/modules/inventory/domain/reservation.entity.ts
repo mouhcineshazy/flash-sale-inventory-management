@@ -32,6 +32,7 @@ export class Reservation extends BaseEntity<string> {
   private _status: ReservationStatus;
   readonly productId: ProductId;
   readonly userId: string;
+  readonly quantity: number;
   readonly expiresAt: Date;
   readonly createdAt: Date;
   private _updatedAt: Date;
@@ -40,6 +41,7 @@ export class Reservation extends BaseEntity<string> {
     id: string;
     productId: ProductId;
     userId: string;
+    quantity: number;
     status: ReservationStatus;
     expiresAt: Date;
     createdAt: Date;
@@ -49,6 +51,7 @@ export class Reservation extends BaseEntity<string> {
     this._status = props.status;
     this.productId = props.productId;
     this.userId = props.userId;
+    this.quantity = props.quantity;
     this.expiresAt = props.expiresAt;
     this.createdAt = props.createdAt;
     this._updatedAt = props.updatedAt;
@@ -58,12 +61,13 @@ export class Reservation extends BaseEntity<string> {
   // Factory methods
   // ---------------------------------------------------------------------------
 
-  static create(productId: ProductId, userId: string): Reservation {
+  static create(productId: ProductId, userId: string, quantity: number): Reservation {
     const now = new Date();
     return new Reservation({
       id: randomUUID(),
       productId,
       userId,
+      quantity,
       status: ReservationStatus.PENDING,
       expiresAt: new Date(now.getTime() + RESERVATION_TTL_MS),
       createdAt: now,
@@ -75,6 +79,7 @@ export class Reservation extends BaseEntity<string> {
     id: string;
     productId: string;
     userId: string;
+    quantity: number;
     status: ReservationStatus;
     expiresAt: Date;
     createdAt: Date;

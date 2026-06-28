@@ -36,15 +36,15 @@ export class PrismaProductRepository implements IProductRepository {
     return this.toDomain(record);
   }
 
-  async decrementStockAtomic(id: ProductId): Promise<Product | null> {
-    // Step 1: atomically decrement — only succeeds if stock > 0
+  async decrementStockAtomic(id: ProductId, quantity: number): Promise<Product | null> {
+    // Step 1: atomically decrement — only succeeds if stock >= quantity
     const result = await this.prisma.product.updateMany({
       where: {
         id: id.value,
-        stock: { gt: 0 },
+        stock: { gte: quantity },
       },
       data: {
-        stock: { decrement: 1 },
+        stock: { decrement: quantity },
       },
     });
 

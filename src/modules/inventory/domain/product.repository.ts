@@ -32,7 +32,7 @@ export interface IProductRepository {
    * This is the core of our oversell prevention strategy. The implementation
    * uses: UPDATE products SET stock = stock - 1 WHERE id = ? AND stock > 0
    */
-  decrementStockAtomic(id: ProductId): Promise<Product | null>;
+  decrementStockAtomic(id: ProductId, quantity: number): Promise<Product | null>;
 
   save(product: Product): Promise<void>;
 }

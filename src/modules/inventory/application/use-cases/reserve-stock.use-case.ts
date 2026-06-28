@@ -8,6 +8,7 @@ import { PrismaService } from '../../../../shared/infrastructure/database/prisma
 export interface ReserveStockCommand {
   productId: string;
   userId: string;
+  quantity: number;
 }
 
 export interface ReserveStockResult {
@@ -51,20 +52,19 @@ export class ReserveStockUseCase {
 
     return this.prisma.$transaction(async () => {
       // Atomic decrement — returns null if product not found or stock === 0
-      const product = await this.productRepository.decrementStockAtomic(productId);
+      const product = await this.productRepository.decrementStockAtomic(productId, command.quantity);
 
       if (!product) {
-        // Distinguish between "not found" and "out of stock" by checking existence
         const exists = await this.productRepository.findById(productId);
         if (!exists) {
           throw new NotFoundException(`Product ${command.productId} not found`);
         }
         throw new ConflictException(
-          `Product "${exists.name}" is out of stock`,
+          `Product "${exists.name}" has insufficient stock for quantity ${command.quantity}`,
         );
       }
 
-      const reservation = Reservation.create(productId, command.userId);
+      const reservation = Reservation.create(productId, command.userId, command.quantity);
       await this.reservationRepository.save(reservation);
 
       this.logger.log(

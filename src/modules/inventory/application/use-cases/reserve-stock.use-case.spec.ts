@@ -48,7 +48,7 @@ describe('ReserveStockUseCase', () => {
       reservationRepo.save.mockResolvedValue(undefined);
 
       // Act
-      const result = await useCase.execute({ productId: 'some-uuid', userId: 'user-1' });
+      const result = await useCase.execute({ productId: 'some-uuid', userId: 'user-1', quantity: 1 });
 
       // Assert
       expect(reservationRepo.save).toHaveBeenCalledTimes(1);
@@ -63,7 +63,7 @@ describe('ReserveStockUseCase', () => {
 
       // Act + Assert
       await expect(
-        useCase.execute({ productId: 'nonexistent-uuid', userId: 'user-1' }),
+        useCase.execute({ productId: 'nonexistent-uuid', userId: 'user-1', quantity: 1 }),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -74,7 +74,7 @@ describe('ReserveStockUseCase', () => {
 
       // Act + Assert
       await expect(
-        useCase.execute({ productId: 'some-uuid', userId: 'user-1' }),
+        useCase.execute({ productId: 'some-uuid', userId: 'user-1', quantity: 1 }),
       ).rejects.toThrow(ConflictException);
     });
   });
