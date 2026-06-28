@@ -1,98 +1,213 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Flash Sale Inventory Management
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)
+![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+A production-style inventory and order management backend for a flash sale platform. The central engineering challenge: thousands of users attempt to buy the same limited-stock product at the exact same second — the system must prevent overselling, stay consistent under load, and keep response times low without sacrificing correctness.
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## The Problem
 
-## Project setup
+A standard e-commerce approach — read stock, check if available, decrement — breaks under flash sale traffic. With 5,000 concurrent requests and 100 units, a naive read-then-write creates a race condition: every request reads `stock = 100`, every request passes the availability check, and the stock goes negative.
 
-```bash
-$ npm install
+The challenge has two layers:
+1. **Correctness** — guarantee that stock never goes below zero, regardless of concurrency
+2. **Performance** — solve it without long-held locks that serialize all traffic and stall the connection pool
+
+This project works through both layers from first principles.
+
+---
+
+## Key Design Decisions
+
+### Atomic UPDATE instead of SELECT FOR UPDATE
+
+Stock reservation uses a single atomic statement:
+
+```sql
+UPDATE products SET stock = stock - 1 WHERE id = :id AND stock > 0
 ```
 
-## Compile and run the project
+PostgreSQL serializes concurrent writes to the same row at the tuple level. When two requests arrive with `stock = 1`, the second re-evaluates `WHERE stock > 0` against the committed state and gets 0 rows updated — the application treats this as out-of-stock and returns 409.
 
-```bash
-# development
-$ npm run start
+**Why not SELECT FOR UPDATE?** A pessimistic lock holds an open connection across multiple round trips: SELECT → application logic → UPDATE → INSERT → COMMIT. Under flash sale traffic, this drains the connection pool and queues requests at the application layer. The atomic UPDATE holds a connection for one statement — milliseconds — keeping the pool free.
 
-# watch mode
-$ npm run start:dev
+### Domain-Driven Design with two bounded contexts
 
-# production mode
-$ npm run start:prod
+The system is split into **Inventory** and **Orders** as separate bounded contexts with explicit boundaries:
+
+- **Inventory** owns all stock invariants. It knows about Products and Reservations.
+- **Orders** holds a `reservationId` reference. It never reads or mutates inventory directly.
+
+This is a deliberate trade-off against a simpler single-service design. The separation means Inventory can enforce its invariants in one place, and the stock reservation logic can evolve independently from order and payment flows.
+
+### Transaction boundaries in the application layer, not the repository
+
+Use cases own transaction scope. Repositories are thin adapters — they do not open transactions. This keeps the domain model free of infrastructure concerns and makes it easy to unit test business logic without a database.
+
+### Money as integers in cents
+
+All monetary values are stored as integers representing cents (`9999` = $99.99). No floating-point arithmetic anywhere in the money path. Currency is always stored alongside the amount — `Money` is a value object that enforces both invariants.
+
+### Idempotency keys on orders
+
+Network failures cause clients to retry. Without idempotency, a retry creates a duplicate order. Every order carries a client-supplied `idempotencyKey` enforced by a unique database constraint. A retry with the same key returns the existing order rather than creating a second one.
+
+---
+
+## Architecture
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                         HTTP Layer                             │
+│          NestJS Controllers · class-validator DTOs             │
+└──────────────────────────┬─────────────────────────────────────┘
+                           │
+┌──────────────────────────▼─────────────────────────────────────┐
+│                      Application Layer                         │
+│        Use Cases · Command / Result types · Port interfaces    │
+└──────────┬──────────────────────────────────────┬──────────────┘
+           │                                      │
+┌──────────▼───────────┐              ┌───────────▼──────────────┐
+│    Domain Layer       │              │   Infrastructure Layer    │
+│                       │              │                          │
+│  Product (Aggregate)  │              │  Prisma repositories     │
+│  Reservation (Entity) │◄─ ports ────►│  PrismaPg adapter        │
+│  Order (Aggregate)    │              │  Redis cache             │
+│  Value Objects        │              │  External service        │
+│  Domain Events        │              │  adapters                │
+└───────────────────────┘              └──────────────────────────┘
 ```
 
-## Run tests
+The domain layer has zero framework imports. NestJS and Prisma are infrastructure — swappable without touching business logic.
 
-```bash
-# unit tests
-$ npm run test
+### Bounded Contexts
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```
+INVENTORY                          ORDERS
+─────────────────────              ──────────────────────
+Product (Aggregate Root)           Order (Aggregate Root)
+  reserveStock()                     place()
+  releaseStock()                     confirm()
+                                     cancel()
+Reservation (Entity)
+  confirm()                        holds reservationId
+  release()                        never touches Reservation
+  isExpired()
 ```
 
-## Deployment
+### State Machines
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+```
+Reservation:  PENDING ──► CONFIRMED   payment succeeded
+                     └──► RELEASED    expired · cancelled · payment failed
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+Order:        PENDING ──► CONFIRMED   payment succeeded
+                     └──► CANCELLED   payment failed
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### Enforced Invariants
 
-## Resources
+| Invariant | Where it lives |
+|-----------|---------------|
+| Stock cannot go negative | `StockCount` value object constructor |
+| Price cannot be negative | `Money` value object constructor |
+| Money always carries a currency | `Money` value object constructor |
+| Cannot confirm an expired reservation | `Reservation.confirm()` |
+| Cannot release a confirmed reservation | `Reservation.release()` |
+| Cannot confirm a non-PENDING reservation | `Reservation.confirm()` |
 
-Check out a few resources that may come in handy when working with NestJS:
+---
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Data Model
 
-## Support
+Four tables across two bounded contexts. Monetary values are stored in cents throughout.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+**Inventory context**
+- `products` — id, name, description, priceAmount (cents), currency, stock
+- `reservations` — id, productId, userId, status, expiresAt
 
-## Stay in touch
+**Orders context**
+- `orders` — id, reservationId (unique reference to inventory), userId, status, totalAmount, idempotencyKey (unique)
+- `payments` — id, orderId, status, amount
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+---
 
-## License
+## Tech Stack
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+| Concern | Choice | Notes |
+|---------|--------|-------|
+| Framework | NestJS 11 + TypeScript strict | Dependency injection, module system |
+| ORM | Prisma 7 + PrismaPg driver adapter | New query compiler — no binary engine |
+| Database | PostgreSQL 16 | Row-level locking for atomic updates |
+| Cache | Redis 7 | Rate limiting, reservation TTL (planned) |
+| Validation | class-validator + class-transformer | Applied at the HTTP boundary only |
+| API docs | @nestjs/swagger | OpenAPI spec auto-generated |
+| Testing | Jest | Unit tests on domain layer only |
+
+---
+
+## Getting Started
+
+**Prerequisites:** Node.js 20+, Docker
+
+```bash
+# 1. Start PostgreSQL (port 5433) and Redis (port 6379)
+docker-compose up -d
+
+# 2. Install dependencies
+npm install
+
+# 3. Copy environment config (defaults work for local Docker)
+cp .env.example .env
+
+# 4. Run database migrations
+npx prisma migrate dev
+
+# 5. Start in watch mode
+npm run start:dev
+```
+
+App: **http://localhost:3001** · Swagger: **http://localhost:3001/api**
+
+---
+
+## API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/inventory/products` | Create a product with initial stock |
+| `POST` | `/inventory/products/:id/reserve` | Atomically reserve one unit of stock |
+
+Every response includes an `X-Correlation-ID` header for request tracing.
+
+---
+
+## Tests
+
+```bash
+npm run test        # unit tests
+npm run test:watch  # watch mode
+npm run test:cov    # coverage report
+```
+
+Domain layer is unit-tested in isolation — no database, no NestJS bootstrap. Aggregates, entities, and value objects are tested directly against their invariants.
+
+---
+
+## Roadmap
+
+- [x] Product aggregate and Reservation entity with full invariant enforcement
+- [x] Atomic stock reservation (oversell prevention)
+- [x] Prisma 7 infrastructure with PrismaPg driver adapter
+- [x] Unit tests for domain layer
+- [x] CreateProduct and ReserveStock use cases end-to-end
+- [ ] Orders module — Order aggregate, PlaceOrderUseCase, idempotency enforcement
+- [ ] Payment processing flow
+- [ ] LLM integration — AI-generated sale descriptions and inventory analysis agent (Anthropic SDK)
+- [ ] Redis rate limiting and reservation TTL expiry worker
+- [ ] Concurrency load test (k6) — 500 concurrent users against a single product
