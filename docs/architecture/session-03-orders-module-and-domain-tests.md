@@ -51,7 +51,7 @@ src/modules/inventory/
     dtos/reserve-stock-request.dto.ts      ← added quantity field with @Min(1) @Max(10) validation
     inventory.controller.ts                ← passes dto.quantity to ReserveStockCommand
 
-src/modules/inventory/inventory.module.ts  ← exports ReserveStockUseCase and PRODUCT_REPOSITORY for Orders
+src/modules/inventory/inventory.module.ts  ← exports ReserveStockUseCase, ConfirmReservationUseCase, ReleaseReservationUseCase
 README.md                                  ← full rewrite for recruiter/interviewer audience
 ```
 
@@ -69,19 +69,23 @@ README.md                                  ← full rewrite for recruiter/interv
 
 **Key implication:** `totalAmount = product.priceAmount × quantity`. The atomic decrement changes to `WHERE stock >= quantity`.
 
-### 2. Cross-context price lookup via IProductRepository injection
+### 2. Price snapshot on the Reservation at reservation time (V1, not deferred)
 
-**Decision:** `PlaceOrderUseCase` (Orders context) injects `IProductRepository` (Inventory port) to read the product price at order placement time.
+**Decision:** `priceAmount` and `currency` are snapshotted onto the `Reservation` entity at the moment `ReserveStockUseCase` atomically decrements stock. `PlaceOrderUseCase` reads the price from the reservation result — it has no dependency on `IProductRepository`.
 
-**Rejected alternative A:** Client sends `totalAmount` in the request — server trusts the caller.
+**Why this was required in V1, not deferred:**
+Price integrity is a business-critical invariant. If a product price changes between reservation and order creation, the customer is charged an amount they never agreed to. In a startup or live commerce platform, this causes customer disputes, refund overhead, and trust loss. It is not a nice-to-have optimisation — it is a correctness requirement for any production system that handles money.
 
-**Rejected alternative B:** Price is snapshotted onto the Reservation when stock is reserved.
+**Rejected alternative A — client sends `totalAmount`:** Server trusts the caller. Rejected: exposes the system to client-side price manipulation.
 
-**Reasoning:** Option A is unsafe (client-side price manipulation). Option B is architecturally cleaner (no cross-context dependency, price locked at reservation time) but requires a schema change to Reservation that was deferred. Option B is the V2 approach.
+**Rejected alternative B (initial V1 approach, discarded) — `PlaceOrderUseCase` reads from `IProductRepository`:** Created a cross-context dependency and a race condition: `findById(product)` → `reserveStock()` → `Order.place()`. A price change between steps 1 and 3 silently produces an incorrect `totalAmount`. Discarded before production.
 
-**The accepted trade-off:** The dependency is one-directional (Orders reads from Inventory, never writes) and goes through the port interface. If the bounded contexts are split into separate services later, the port implementation swaps to an HTTP client — the application layer is unchanged.
+**Why the chosen approach eliminates the race:**
+`ReserveStockUseCase` already has the product in memory after `decrementStockAtomic` returns — zero extra DB reads. The price is read from the same in-memory product object and written to the Reservation in the same transaction. The moment stock is locked, the price is locked with it. There is no window between price read and reservation write.
 
-**Residual race condition:** `findById(product)` → `reserveStock()` → `Order.place()`. If the product price changes between steps 1 and 3, the order records the old price. Narrow window, acceptable for V1.
+**Architectural benefit:** `PlaceOrderUseCase` no longer injects `IProductRepository`. The Orders bounded context has no read dependency on the Inventory domain model at all — it only calls `ReserveStockUseCase` and receives a self-contained result containing everything needed to create the Order.
+
+**Schema change:** `priceAmount Int` and `currency String` added to the `reservations` table. Migration: `20260628215550_add_price_snapshot_to_reservations`.
 
 ### 3. Idempotency as check-then-save (not atomic)
 
@@ -158,7 +162,7 @@ README.md                                  ← full rewrite for recruiter/interv
 
 ## Current Working State
 
-- **34 unit tests passing** across 6 test suites — zero failures
+- **36 unit tests passing** across 6 test suites — zero failures
 - **TypeScript compiles clean** — zero errors (`tsc --noEmit`)
 - **Migration applied** — `quantity` column added to `reservations` and `orders` tables
 - **App boots** — both bounded contexts initialize cleanly

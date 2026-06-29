@@ -44,7 +44,6 @@ import { InventoryController } from './http/inventory.controller';
     ReserveStockUseCase,
     ConfirmReservationUseCase,
     ReleaseReservationUseCase,
-    PRODUCT_REPOSITORY,
   ],
 })
 export class InventoryModule {}

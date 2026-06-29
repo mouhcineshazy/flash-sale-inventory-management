@@ -27,14 +27,16 @@ model Product {
 }
 
 model Reservation {
-  id        String            @id @default(uuid())
-  productId String
-  userId    String
-  quantity  Int               @default(1)
-  status    ReservationStatus @default(PENDING)
-  expiresAt DateTime
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  id           String            @id @default(uuid())
+  productId    String
+  userId       String
+  quantity     Int               @default(1)
+  priceAmount  Int               @default(0) // cents, snapshotted from product at reservation time
+  currency     String            @default("CAD")
+  status       ReservationStatus @default(PENDING)
+  expiresAt    DateTime
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   product Product @relation(fields: [productId], references: [id])
   order   Order?

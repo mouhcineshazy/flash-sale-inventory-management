@@ -1,13 +1,8 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, ConflictException } from '@nestjs/common';
 import { PlaceOrderUseCase } from './place-order.use-case';
 import { IOrderRepository } from '@modules/orders/domain/IOrderRepository';
-import { IProductRepository } from '@modules/inventory/domain/product.repository';
 import { ReserveStockUseCase } from '@modules/inventory/application/use-cases/reserve-stock.use-case';
 import { Order, OrderStatus } from '@modules/orders/domain/order.aggregate';
-import { Product } from '@modules/inventory/domain/product.aggregate';
-
-const makeProduct = () =>
-  Product.create({ name: 'Flash Hoodie', priceAmount: 5000, currency: 'USD', initialStock: 10 });
 
 const makeExistingOrder = () =>
   Order.place({
@@ -19,10 +14,16 @@ const makeExistingOrder = () =>
     idempotencyKey: 'existing-key',
   });
 
+const reservationResult = {
+  reservationId: 'res-uuid',
+  expiresAt: new Date(),
+  priceAmount: 5000,
+  currency: 'USD',
+};
+
 describe('PlaceOrderUseCase', () => {
   let useCase: PlaceOrderUseCase;
   let orderRepo: jest.Mocked<IOrderRepository>;
-  let productRepo: jest.Mocked<IProductRepository>;
   let reserveStockUseCase: jest.Mocked<Pick<ReserveStockUseCase, 'execute'>>;
 
   beforeEach(() => {
@@ -33,106 +34,90 @@ describe('PlaceOrderUseCase', () => {
       findByUserId: jest.fn(),
     };
 
-    productRepo = {
-      findById: jest.fn(),
-      decrementStockAtomic: jest.fn(),
-      save: jest.fn(),
-    };
-
-    reserveStockUseCase = {
-      execute: jest.fn(),
-    };
+    reserveStockUseCase = { execute: jest.fn() };
 
     useCase = new PlaceOrderUseCase(
       orderRepo,
-      productRepo,
       reserveStockUseCase as unknown as ReserveStockUseCase,
     );
   });
 
-  describe('execute()', () => {
-    const command = {
-      productId: 'product-uuid',
-      userId: 'user-uuid',
-      quantity: 2,
-      idempotencyKey: 'idem-key',
-    };
+  const command = {
+    productId: 'product-uuid',
+    userId: 'user-uuid',
+    quantity: 2,
+    idempotencyKey: 'idem-key',
+  };
 
-    it('should return existing order without re-processing when idempotency key matches', async () => {
+  describe('idempotency', () => {
+    it('should return the existing order without any side effects on duplicate key', async () => {
       const existing = makeExistingOrder();
       orderRepo.findByIdempotencyKey.mockResolvedValue(existing);
 
       const result = await useCase.execute(command);
 
       expect(result.orderId).toBe(existing.id.value);
-      expect(productRepo.findById).not.toHaveBeenCalled();
       expect(reserveStockUseCase.execute).not.toHaveBeenCalled();
       expect(orderRepo.save).not.toHaveBeenCalled();
     });
+  });
 
-    it('should throw NotFoundException when product does not exist', async () => {
+  describe('happy path', () => {
+    beforeEach(() => {
       orderRepo.findByIdempotencyKey.mockResolvedValue(null);
-      productRepo.findById.mockResolvedValue(null);
-
-      await expect(useCase.execute(command)).rejects.toThrow(NotFoundException);
+      reserveStockUseCase.execute.mockResolvedValue(reservationResult);
+      orderRepo.save.mockResolvedValue(undefined);
     });
 
-    it('should create order with correct totalAmount (price × quantity)', async () => {
-      orderRepo.findByIdempotencyKey.mockResolvedValue(null);
-      productRepo.findById.mockResolvedValue(makeProduct()); // priceAmount: 5000
-      reserveStockUseCase.execute.mockResolvedValue({
-        reservationId: 'res-uuid',
-        expiresAt: new Date(),
-      });
-      orderRepo.save.mockResolvedValue(undefined);
+    it('should calculate totalAmount from the snapshotted reservation price × quantity', async () => {
+      const result = await useCase.execute(command); // quantity: 2, priceAmount: 5000
+      expect(result.totalAmount).toBe(10000);
+    });
 
-      const result = await useCase.execute(command); // quantity: 2
+    it('should use the currency from the reservation snapshot, not from the command', async () => {
+      const result = await useCase.execute(command);
+      expect(result.currency).toBe('USD');
+    });
 
-      expect(result.totalAmount).toBe(10000); // 5000 × 2
+    it('should create the order in PENDING status', async () => {
+      const result = await useCase.execute(command);
       expect(result.status).toBe(OrderStatus.PENDING);
     });
 
-    it('should call reserveStockUseCase with the correct productId, userId, and quantity', async () => {
-      orderRepo.findByIdempotencyKey.mockResolvedValue(null);
-      productRepo.findById.mockResolvedValue(makeProduct());
-      reserveStockUseCase.execute.mockResolvedValue({
-        reservationId: 'res-uuid',
-        expiresAt: new Date(),
-      });
-      orderRepo.save.mockResolvedValue(undefined);
+    it('should persist the order and return the reservation id', async () => {
+      const result = await useCase.execute(command);
+      expect(orderRepo.save).toHaveBeenCalledTimes(1);
+      expect(result.reservationId).toBe('res-uuid');
+    });
 
+    it('should call ReserveStockUseCase with productId, userId, and quantity', async () => {
       await useCase.execute(command);
-
       expect(reserveStockUseCase.execute).toHaveBeenCalledWith({
         productId: command.productId,
         userId: command.userId,
         quantity: command.quantity,
       });
     });
+  });
 
-    it('should persist the order and return the reservation id', async () => {
+  describe('failure paths', () => {
+    it('should propagate NotFoundException from ReserveStockUseCase when product not found', async () => {
       orderRepo.findByIdempotencyKey.mockResolvedValue(null);
-      productRepo.findById.mockResolvedValue(makeProduct());
-      reserveStockUseCase.execute.mockResolvedValue({
-        reservationId: 'res-uuid',
-        expiresAt: new Date(),
-      });
-      orderRepo.save.mockResolvedValue(undefined);
-
-      const result = await useCase.execute(command);
-
-      expect(orderRepo.save).toHaveBeenCalledTimes(1);
-      expect(result.reservationId).toBe('res-uuid');
-    });
-
-    it('should propagate ConflictException from ReserveStockUseCase when out of stock', async () => {
-      orderRepo.findByIdempotencyKey.mockResolvedValue(null);
-      productRepo.findById.mockResolvedValue(makeProduct());
       reserveStockUseCase.execute.mockRejectedValue(
-        new (require('@nestjs/common').ConflictException)('Insufficient stock'),
+        new NotFoundException('Product not found'),
       );
 
-      await expect(useCase.execute(command)).rejects.toThrow('Insufficient stock');
+      await expect(useCase.execute(command)).rejects.toThrow(NotFoundException);
+      expect(orderRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('should propagate ConflictException and not save the order when stock is insufficient', async () => {
+      orderRepo.findByIdempotencyKey.mockResolvedValue(null);
+      reserveStockUseCase.execute.mockRejectedValue(
+        new ConflictException('Insufficient stock'),
+      );
+
+      await expect(useCase.execute(command)).rejects.toThrow(ConflictException);
       expect(orderRepo.save).not.toHaveBeenCalled();
     });
   });

@@ -14,6 +14,8 @@ export interface ReserveStockCommand {
 export interface ReserveStockResult {
   reservationId: string;
   expiresAt: Date;
+  priceAmount: number;
+  currency: string;
 }
 
 /**
@@ -64,7 +66,13 @@ export class ReserveStockUseCase {
         );
       }
 
-      const reservation = Reservation.create(productId, command.userId, command.quantity);
+      const reservation = Reservation.create(
+        productId,
+        command.userId,
+        command.quantity,
+        product.price.amountInCents,
+        product.price.currency,
+      );
       await this.reservationRepository.save(reservation);
 
       this.logger.log(
@@ -74,6 +82,8 @@ export class ReserveStockUseCase {
       return {
         reservationId: reservation.id,
         expiresAt: reservation.expiresAt,
+        priceAmount: reservation.priceAmount,
+        currency: reservation.currency,
       };
     });
   }

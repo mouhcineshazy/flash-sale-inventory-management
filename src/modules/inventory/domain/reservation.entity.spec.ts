@@ -6,7 +6,7 @@ describe("Reservation Entity test",() => {
         let reservation: Reservation;
         beforeEach(() => {
             //Arrange
-            reservation = Reservation.create(ProductId.generate(), 'user-1', 1);
+            reservation = Reservation.create(ProductId.generate(), 'user-1', 1, 5000, 'USD');
 
 
         });
@@ -29,6 +29,8 @@ describe("Reservation Entity test",() => {
                 userId: 'user-1',
                 status: ReservationStatus.PENDING,
                 quantity: 1,
+                priceAmount: 5000,
+                currency: 'USD',
                 expiresAt: new Date(Date.now() - 1000), // 1 second in the past
                 createdAt: new Date(),
                 updatedAt: new Date(),
@@ -39,7 +41,7 @@ describe("Reservation Entity test",() => {
     describe('release()', () =>{
         let reservation: Reservation;
         beforeEach(()=>{
-            reservation = Reservation.create(ProductId.generate(), 'user-1', 1);
+            reservation = Reservation.create(ProductId.generate(), 'user-1', 1, 5000, 'USD');
         })
         it('should release a reservation successfully',()=>{
             //Act
@@ -64,6 +66,8 @@ describe("Reservation Entity test",() => {
                 userId: 'user-1',
                 status: ReservationStatus.PENDING,
                 quantity: 1,
+                priceAmount: 5000,
+                currency: 'USD',
                 expiresAt: new Date(Date.now() - 1000), // 1 second in the past
                 createdAt: new Date(),
                 updatedAt: new Date(),
@@ -71,7 +75,7 @@ describe("Reservation Entity test",() => {
             expect(expiredReservation.isExpired()).toBe(true);
         });
         it('should return false if reservation is not expired',()=>{
-            const reservation = Reservation.create(ProductId.generate(), 'user-1', 1);
+            const reservation = Reservation.create(ProductId.generate(), 'user-1', 1, 5000, 'USD');
             expect(reservation.isExpired()).toBe(false);
         })
 

@@ -8,31 +8,15 @@ export enum ReservationStatus {
   RELEASED = 'RELEASED',
 }
 
-// How long a reservation holds stock before it expires (15 minutes)
 const RESERVATION_TTL_MS = 15 * 60 * 1000;
 
-/**
- * Reservation — Entity (Inventory context)
- *
- * A reservation is a time-limited claim on one unit of a product's stock.
- * It is created when a user initiates checkout and released when:
- *  - The order is confirmed (payment succeeded) → status: CONFIRMED
- *  - The order is cancelled or payment failed  → status: RELEASED
- *  - The TTL expires before the user acts       → status: RELEASED
- *
- * This is an Entity (not an Aggregate Root) because it cannot exist without
- * a Product. Its lifecycle is bounded by the Product's existence.
- *
- * Invariants enforced:
- *  - A CONFIRMED reservation cannot be released
- *  - A RELEASED reservation cannot be confirmed
- *  - Expiry status is derived from time, not stored (prevents stale state)
- */
 export class Reservation extends BaseEntity<string> {
   private _status: ReservationStatus;
   readonly productId: ProductId;
   readonly userId: string;
   readonly quantity: number;
+  readonly priceAmount: number;
+  readonly currency: string;
   readonly expiresAt: Date;
   readonly createdAt: Date;
   private _updatedAt: Date;
@@ -42,6 +26,8 @@ export class Reservation extends BaseEntity<string> {
     productId: ProductId;
     userId: string;
     quantity: number;
+    priceAmount: number;
+    currency: string;
     status: ReservationStatus;
     expiresAt: Date;
     createdAt: Date;
@@ -52,22 +38,28 @@ export class Reservation extends BaseEntity<string> {
     this.productId = props.productId;
     this.userId = props.userId;
     this.quantity = props.quantity;
+    this.priceAmount = props.priceAmount;
+    this.currency = props.currency;
     this.expiresAt = props.expiresAt;
     this.createdAt = props.createdAt;
     this._updatedAt = props.updatedAt;
   }
 
-  // ---------------------------------------------------------------------------
-  // Factory methods
-  // ---------------------------------------------------------------------------
-
-  static create(productId: ProductId, userId: string, quantity: number): Reservation {
+  static create(
+    productId: ProductId,
+    userId: string,
+    quantity: number,
+    priceAmount: number,
+    currency: string,
+  ): Reservation {
     const now = new Date();
     return new Reservation({
       id: randomUUID(),
       productId,
       userId,
       quantity,
+      priceAmount,
+      currency,
       status: ReservationStatus.PENDING,
       expiresAt: new Date(now.getTime() + RESERVATION_TTL_MS),
       createdAt: now,
@@ -80,6 +72,8 @@ export class Reservation extends BaseEntity<string> {
     productId: string;
     userId: string;
     quantity: number;
+    priceAmount: number;
+    currency: string;
     status: ReservationStatus;
     expiresAt: Date;
     createdAt: Date;
@@ -91,15 +85,9 @@ export class Reservation extends BaseEntity<string> {
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // State transitions — guard invariants explicitly
-  // ---------------------------------------------------------------------------
-
   confirm(): void {
     if (this._status !== ReservationStatus.PENDING) {
-      throw new Error(
-        `Cannot confirm a reservation in status: ${this._status}`,
-      );
+      throw new Error(`Cannot confirm a reservation in status: ${this._status}`);
     }
     if (this.isExpired()) {
       throw new Error('Cannot confirm an expired reservation');
@@ -115,10 +103,6 @@ export class Reservation extends BaseEntity<string> {
     this._status = ReservationStatus.RELEASED;
     this._updatedAt = new Date();
   }
-
-  // ---------------------------------------------------------------------------
-  // Queries
-  // ---------------------------------------------------------------------------
 
   isExpired(): boolean {
     return new Date() > this.expiresAt;
