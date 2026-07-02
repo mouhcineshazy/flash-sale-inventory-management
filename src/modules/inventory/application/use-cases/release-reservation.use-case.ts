@@ -1,8 +1,7 @@
 import { Injectable, Inject, NotFoundException, Logger } from '@nestjs/common';
 import { RESERVATION_REPOSITORY, IReservationRepository } from '../../domain/reservation.repository';
 import { PRODUCT_REPOSITORY, IProductRepository } from '../../domain/product.repository';
-import { ProductId } from '../../domain/value-objects/product-id.vo';
-import { PrismaService } from '../../../../shared/infrastructure/database/prisma.service';
+import { PrismaService } from '@shared/infrastructure/database/prisma.service';
 
 export interface ReleaseReservationCommand {
   reservationId: string;
