@@ -2,6 +2,7 @@ node_modules
 dist
 .env
 .idea
+coverage
 
 # Prisma generated client
 src/generated/

@@ -2,29 +2,41 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@shared/infrastructure/database/prisma.service';
 import { IOrderRepository } from '@modules/orders/domain/IOrderRepository';
 import { Order, OrderStatus } from '@modules/orders/domain/order.aggregate';
+import {Prisma} from "../../../../generated/prisma/client";
 
 @Injectable()
 export class PrismaOrderRepository implements IOrderRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async save(order: Order): Promise<void> {
-    await this.prisma.order.upsert({
-      where: { id: order.id.value },
-      create: {
-        id: order.id.value,
-        reservationId: order.reservationId,
-        userId: order.userId,
-        quantity: order.quantity,
-        status: order.status,
-        totalAmount: order.totalAmount,
-        currency: order.currency,
-        idempotencyKey: order.idempotencyKey,
-        createdAt: order.createdAt,
-      },
-      update: {
-        status: order.status,
-      },
-    });
+    try{
+      await this.prisma.order.upsert({
+        where: { id: order.id.value },
+        create: {
+          id: order.id.value,
+          reservationId: order.reservationId,
+          userId: order.userId,
+          quantity: order.quantity,
+          status: order.status,
+          totalAmount: order.totalAmount,
+          currency: order.currency,
+          idempotencyKey: order.idempotencyKey,
+          createdAt: order.createdAt,
+        },
+        update: {
+          status: order.status,
+        },
+      });
+    } catch (error) {
+      const isIdempotencyKeyConflict =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002' &&
+          (error.meta?.target as string[])?.includes('idempotencyKey');
+      if (isIdempotencyKeyConflict) {
+        return;
+      }
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<Order | null> {
