@@ -206,7 +206,7 @@ Domain layer is unit-tested in isolation — no database, no NestJS bootstrap. A
 - [x] Prisma 7 infrastructure with PrismaPg driver adapter
 - [x] Unit tests for domain layer
 - [x] CreateProduct and ReserveStock use cases end-to-end
-- [ ] Orders module — Order aggregate, PlaceOrderUseCase, idempotency enforcement
+- [x] Orders module — Order aggregate, PlaceOrderUseCase, idempotency enforcement
 - [ ] Payment processing flow
 - [ ] LLM integration — AI-generated sale descriptions and inventory analysis agent (Anthropic SDK)
 - [ ] Redis rate limiting and reservation TTL expiry worker
