@@ -49,6 +49,17 @@ async function bootstrap() {
   // ---------------------------------------------------------------------------
   app.enableShutdownHooks();
 
+  //the SIGTERM handler is registered after app.listen(). If a signal arrives during the await app.listen() call, the timeout guard isn't in place yet. Both signal handlers — NestJS's (enableShutdownHooks) and yours —
+  // should be registered before the process starts serving traffic.
+  const SHUTDOWN_TIMEOUT_MS = 10_000;
+  process.on('SIGTERM', () => {
+    setTimeout(() => {
+      // TODO: use a logger for production
+      console.log('Graceful shutdown timed out — forcing exit');
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS).unref(); // .unref() prevents this timer from keeping the process alive
+  });
+
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
 
