@@ -1,7 +1,8 @@
-import { BaseEntity } from '../../../shared/domain/base-entity';
+import { BaseEntity } from '@shared/domain/base-entity';
 import { ProductId } from './value-objects/product-id.vo';
 import { StockCount } from './value-objects/stock-count.vo';
 import { Money, SupportedCurrency } from './value-objects/money.vo';
+import {DomainException} from "@shared/domain/domain.exception";
 
 interface ProductProps {
   name: string;
@@ -62,7 +63,7 @@ export class Product extends BaseEntity<ProductId> {
     initialStock: number;
   }): Product {
     if (!props.name || props.name.trim().length === 0) {
-      throw new Error('Product name cannot be empty');
+      throw new DomainException('Product name cannot be empty');
     }
 
     const now = new Date();
@@ -117,7 +118,7 @@ export class Product extends BaseEntity<ProductId> {
    */
   reserveStock(): void {
     if (!this._stock.isAvailable()) {
-      throw new Error(`Product "${this._name}" is out of stock`);
+      throw new DomainException(`Product "${this._name}" is out of stock`);
     }
     this._stock = this._stock.decrement();
     this._updatedAt = new Date();

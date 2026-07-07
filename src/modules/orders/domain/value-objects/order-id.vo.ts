@@ -1,11 +1,12 @@
 import {randomUUID} from "crypto";
+import {DomainException} from "@shared/domain/domain.exception";
 
 export class OrderId {
 
     constructor(readonly value: string) { }
     static create(value: string): OrderId {
         if (!value || value.trim().length === 0) {
-            throw new Error('ProductId cannot be empty');
+            throw new DomainException('ProductId cannot be empty');
         }
         return new OrderId(value.trim());
     }

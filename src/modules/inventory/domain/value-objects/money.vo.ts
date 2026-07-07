@@ -1,3 +1,5 @@
+import {DomainException} from "@shared/domain/domain.exception";
+
 export type SupportedCurrency = 'CAD' | 'USD';
 
 /**
@@ -24,10 +26,10 @@ export class Money {
 
   static of(amountInCents: number, currency: SupportedCurrency): Money {
     if (!Number.isInteger(amountInCents)) {
-      throw new Error('Money amount must be an integer (cents)');
+      throw new DomainException('Money amount must be an integer (cents)');
     }
     if (amountInCents < 0) {
-      throw new Error('Money amount cannot be negative');
+      throw new DomainException('Money amount cannot be negative');
     }
     return new Money(amountInCents, currency);
   }

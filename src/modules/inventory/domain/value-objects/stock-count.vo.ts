@@ -1,3 +1,5 @@
+import {DomainException} from "@shared/domain/domain.exception";
+
 /**
  * StockCount — Value Object
  *
@@ -19,10 +21,10 @@ export class StockCount {
 
   static create(value: number): StockCount {
     if (!Number.isInteger(value)) {
-      throw new Error(`StockCount must be an integer, received: ${value}`);
+      throw new DomainException(`StockCount must be an integer, received: ${value}`);
     }
     if (value < 0) {
-      throw new Error(`StockCount cannot be negative, received: ${value}`);
+      throw new DomainException(`StockCount cannot be negative, received: ${value}`);
     }
     return new StockCount(value);
   }
@@ -33,7 +35,7 @@ export class StockCount {
 
   decrement(): StockCount {
     if (this.value === 0) {
-      throw new Error('Cannot decrement stock below zero');
+      throw new DomainException('Cannot decrement stock below zero');
     }
     return new StockCount(this.value - 1);
   }

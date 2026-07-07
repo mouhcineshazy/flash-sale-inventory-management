@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import {DomainException} from "@shared/domain/domain.exception";
 
 /**
  * ProductId — Value Object
@@ -18,7 +19,7 @@ export class ProductId {
 
   static create(value: string): ProductId {
     if (!value || value.trim().length === 0) {
-      throw new Error('ProductId cannot be empty');
+      throw new DomainException('ProductId cannot be empty');
     }
     return new ProductId(value.trim());
   }

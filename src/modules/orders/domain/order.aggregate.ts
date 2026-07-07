@@ -1,5 +1,6 @@
 import { BaseEntity } from '@shared/domain/base-entity';
 import { OrderId } from '@modules/orders/domain/value-objects/order-id.vo';
+import {DomainException} from "@shared/domain/domain.exception";
 
 export enum OrderStatus {
   PENDING = 'PENDING',
@@ -71,14 +72,14 @@ export class Order extends BaseEntity<OrderId> {
 
   confirm(): void {
     if (this._status !== OrderStatus.PENDING) {
-      throw new Error(`Cannot confirm an order in status: ${this._status}`);
+      throw new DomainException(`Cannot confirm an order in status: ${this._status}`);
     }
     this._status = OrderStatus.CONFIRMED;
   }
 
   cancel(): void {
     if (this._status !== OrderStatus.PENDING) {
-      throw new Error(`Cannot cancel an order in status: ${this._status}`);
+      throw new DomainException(`Cannot cancel an order in status: ${this._status}`);
     }
     this._status = OrderStatus.CANCELLED;
   }

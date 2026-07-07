@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { BaseEntity } from '../../../shared/domain/base-entity';
 import { ProductId } from './value-objects/product-id.vo';
+import {DomainException} from "@shared/domain/domain.exception";
 
 export enum ReservationStatus {
   PENDING = 'PENDING',
@@ -87,10 +88,10 @@ export class Reservation extends BaseEntity<string> {
 
   confirm(): void {
     if (this._status !== ReservationStatus.PENDING) {
-      throw new Error(`Cannot confirm a reservation in status: ${this._status}`);
+      throw new DomainException(`Cannot confirm a reservation in status: ${this._status}`);
     }
     if (this.isExpired()) {
-      throw new Error('Cannot confirm an expired reservation');
+      throw new DomainException('Cannot confirm an expired reservation');
     }
     this._status = ReservationStatus.CONFIRMED;
     this._updatedAt = new Date();
@@ -98,7 +99,7 @@ export class Reservation extends BaseEntity<string> {
 
   release(): void {
     if (this._status === ReservationStatus.CONFIRMED) {
-      throw new Error('Cannot release a confirmed reservation');
+      throw new DomainException('Cannot release a confirmed reservation');
     }
     this._status = ReservationStatus.RELEASED;
     this._updatedAt = new Date();

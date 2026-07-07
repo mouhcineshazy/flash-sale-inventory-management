@@ -54,7 +54,7 @@ export class ReserveStockUseCase {
 
     return this.prisma.$transaction(async () => {
       // Atomic decrement — returns null if product not found or stock === 0
-      const product = await this.productRepository.decrementStockAtomic(productId, command.quantity);
+        const product = await this.productRepository.decrementStockAtomic(productId, command.quantity);
 
       if (!product) {
         const exists = await this.productRepository.findById(productId);
