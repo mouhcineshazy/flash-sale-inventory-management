@@ -3,7 +3,7 @@ import { ReserveStockUseCase } from '@modules/inventory/application/use-cases/re
 import { Product } from '@modules/inventory/domain/product.aggregate';
 import { IProductRepository } from '@modules/inventory/domain/product.repository';
 import { IReservationRepository } from '@modules/inventory/domain/reservation.repository';
-import { PrismaService } from '@shared/infrastructure/database/prisma.service';
+
 
 const makeProduct = () =>
   Product.create({ name: 'Flash Hoodie', priceAmount: 5000, currency: 'USD', initialStock: 10 });
@@ -12,8 +12,6 @@ describe('ReserveStockUseCase', () => {
   let useCase: ReserveStockUseCase;
   let productRepo: jest.Mocked<IProductRepository>;
   let reservationRepo: jest.Mocked<IReservationRepository>;
-  let prisma: jest.Mocked<Pick<PrismaService, '$transaction'>>;
-
   beforeEach(() => {
     productRepo = {
       findById: jest.fn(),
@@ -28,16 +26,9 @@ describe('ReserveStockUseCase', () => {
       updateStatus: jest.fn(),
     };
 
-    // Make $transaction transparent — it just calls the callback immediately.
-    // Without this, all logic inside $transaction() would never execute.
-    prisma = {
-      $transaction: jest.fn().mockImplementation((fn) => fn()),
-    };
-
     useCase = new ReserveStockUseCase(
       productRepo,
       reservationRepo,
-      prisma as unknown as PrismaService,
     );
   });
 

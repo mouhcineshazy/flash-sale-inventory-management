@@ -3,7 +3,6 @@ import { ProductId } from '../../domain/value-objects/product-id.vo';
 import { Reservation } from '../../domain/reservation.entity';
 import { PRODUCT_REPOSITORY, IProductRepository } from '../../domain/product.repository';
 import { RESERVATION_REPOSITORY, IReservationRepository } from '../../domain/reservation.repository';
-import { PrismaService } from '../../../../shared/infrastructure/database/prisma.service';
 
 export interface ReserveStockCommand {
   productId: string;
@@ -33,9 +32,10 @@ export interface ReserveStockResult {
  *  - The domain objects (Product, Reservation) contain the business rules
  *  - This class contains the orchestration logic
  *
- * Transaction boundary: the $transaction wraps both the stock decrement
- * and the reservation insert atomically. If the reservation insert fails,
- * the stock decrement is rolled back and no stock is lost.
+ * Transaction boundary (V1): two separate writes — no shared transaction.
+ * decrementStockAtomic is a single atomic UPDATE (self-sufficient).
+ * If reservationRepository.save() fails after decrement, stock is orphaned
+ * until TTL expiry. Production fix: Unit of Work pattern.
  */
 @Injectable()
 export class ReserveStockUseCase {
@@ -46,45 +46,44 @@ export class ReserveStockUseCase {
     private readonly productRepository: IProductRepository,
     @Inject(RESERVATION_REPOSITORY)
     private readonly reservationRepository: IReservationRepository,
-    private readonly prisma: PrismaService,
   ) {}
 
   async execute(command: ReserveStockCommand): Promise<ReserveStockResult> {
     const productId = ProductId.create(command.productId);
 
-    return this.prisma.$transaction(async () => {
-      // Atomic decrement — returns null if product not found or stock === 0
-        const product = await this.productRepository.decrementStockAtomic(productId, command.quantity);
+    // decrementStockAtomic is a single atomic UPDATE — no explicit transaction needed.
+    // If reservationRepository.save() fails after decrement, stock is orphaned until TTL expiry.
+    // Production fix: Unit of Work pattern passing tx client through repositories.
+    const product = await this.productRepository.decrementStockAtomic(productId, command.quantity);
 
-      if (!product) {
-        const exists = await this.productRepository.findById(productId);
-        if (!exists) {
-          throw new NotFoundException(`Product ${command.productId} not found`);
-        }
-        throw new ConflictException(
-          `Product "${exists.name}" has insufficient stock for quantity ${command.quantity}`,
-        );
+    if (!product) {
+      const exists = await this.productRepository.findById(productId);
+      if (!exists) {
+        throw new NotFoundException(`Product ${command.productId} not found`);
       }
-
-      const reservation = Reservation.create(
-        productId,
-        command.userId,
-        command.quantity,
-        product.price.amountInCents,
-        product.price.currency,
+      throw new ConflictException(
+        `Product "${exists.name}" has insufficient stock for quantity ${command.quantity}`,
       );
-      await this.reservationRepository.save(reservation);
+    }
 
-      this.logger.log(
-        `Stock reserved: product=${command.productId} user=${command.userId} reservation=${reservation.id}`,
-      );
+    const reservation = Reservation.create(
+      productId,
+      command.userId,
+      command.quantity,
+      product.price.amountInCents,
+      product.price.currency,
+    );
+    await this.reservationRepository.save(reservation);
 
-      return {
-        reservationId: reservation.id,
-        expiresAt: reservation.expiresAt,
-        priceAmount: reservation.priceAmount,
-        currency: reservation.currency,
-      };
-    });
+    this.logger.log(
+      `Stock reserved: product=${command.productId} user=${command.userId} reservation=${reservation.id}`,
+    );
+
+    return {
+      reservationId: reservation.id,
+      expiresAt: reservation.expiresAt,
+      priceAmount: reservation.priceAmount,
+      currency: reservation.currency,
+    };
   }
 }
